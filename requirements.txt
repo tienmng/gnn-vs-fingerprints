@@ -1,0 +1,11 @@
+# numpy<2 because torch wheels for macOS x86_64 / Python 3.9 stop at 2.2.x,
+# and those are compiled against the NumPy 1.x ABI. On Python 3.11+ you can
+# safely drop this pin and use torch>=2.3 with numpy 2.
+numpy>=1.24,<2
+torch>=2.0
+torch-geometric>=2.4
+rdkit>=2023.9.1
+lightgbm>=4.0
+scikit-learn>=1.3
+pandas>=2.0
+matplotlib>=3.7
