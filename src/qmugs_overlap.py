@@ -54,24 +54,90 @@ def inchikeys(smiles: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def load_qmugs(path: str) -> pd.DataFrame:
-    if path.endswith((".parquet", ".pq")):
-        df = pd.read_parquet(path)
-    else:
-        df = pd.read_csv(path)
-    col = next((c for c in SMILES_COLS if c in df.columns), None)
-    if col is None:
-        raise SystemExit(
-            f"no SMILES column found in {path}; columns are {list(df.columns)[:20]}")
-    print(f"[qmugs] {len(df):,} rows, SMILES column '{col}'")
+def _inchikey_one(smi: str) -> str | None:
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        return None
+    try:
+        return Chem.MolToInchiKey(mol)
+    except Exception:
+        return None
 
-    if "inchikey" not in df.columns:
-        print("[qmugs] computing InChIKeys (this is the slow part) ...")
-        keys = inchikeys(df[col].astype(str).tolist())
-        df = df.reset_index(drop=True)
-        df["inchikey"] = keys["inchikey"]
+
+def _keys_parallel(smiles: list[str], workers: int | None = None) -> list[str | None]:
+    """InChIKeys with a process pool. RDKit parsing dominates, so this scales."""
+    workers = workers or max(1, (os.cpu_count() or 2))
+    if workers == 1 or len(smiles) < 5000:
+        return [_inchikey_one(s) for s in smiles]
+    import multiprocessing as mp
+    with mp.Pool(workers) as pool:
+        return list(pool.imap(_inchikey_one, smiles, chunksize=500))
+
+
+def peek_columns(path: str, n: int = 2000) -> pd.DataFrame:
+    """Read a small sample to discover columns and dtypes without loading 2 GB."""
+    if path.endswith((".parquet", ".pq")):
+        return pd.read_parquet(path).head(n)
+    return pd.read_csv(path, nrows=n)
+
+
+def load_qmugs(path: str, max_cols: int = 60, workers: int | None = None) -> pd.DataFrame:
+    """Stream the QMugs summary table, keeping one row per unique molecule.
+
+    The published summary.csv is ~1.9 GB with one row per conformer (~2M rows).
+    Loading it whole exhausts a free Colab session, so it is read in chunks,
+    restricted to the SMILES column plus numeric property columns, and collapsed
+    to unique molecules before any InChIKey work happens.
+    """
+    if not os.path.exists(path):
+        raise SystemExit(
+            f"'{path}' not found.\n"
+            "QMugs is hosted by ETH Zurich at https://doi.org/10.3929/ethz-b-000482129 .\n"
+            "Only the per-molecule property table (summary.csv) is needed here; the\n"
+            "structure, spectra and wavefunction tarballs are far larger and unused.\n"
+            "Run without --qmugs to cache our InChIKeys and skip the overlap check."
+        )
+
+    sample = peek_columns(path)
+    print(f"[qmugs] columns ({len(sample.columns)}): {list(sample.columns)}")
+
+    smi_col = next((c for c in SMILES_COLS if c in sample.columns), None)
+    if smi_col is None:
+        raise SystemExit(f"no SMILES column found; columns are {list(sample.columns)}")
+
+    id_cols = [c for c in sample.columns
+               if any(t in c.lower() for t in ("inchikey", "inchi_key", "chembl"))]
+    num_cols = [c for c in sample.select_dtypes("number").columns][:max_cols]
+    keep = list(dict.fromkeys([smi_col] + id_cols + num_cols))
+    print(f"[qmugs] keeping SMILES '{smi_col}', ids {id_cols}, "
+          f"{len(num_cols)} numeric columns")
+
+    if path.endswith((".parquet", ".pq")):
+        df = pd.read_parquet(path, columns=keep)
+    else:
+        parts, seen = [], set()
+        for i, chunk in enumerate(pd.read_csv(path, usecols=keep, chunksize=250_000)):
+            chunk = chunk[~chunk[smi_col].isin(seen)]
+            chunk = chunk.drop_duplicates(subset=smi_col)
+            seen.update(chunk[smi_col].tolist())
+            parts.append(chunk)
+            print(f"[qmugs]   chunk {i + 1}: {len(seen):,} unique molecules so far")
+        df = pd.concat(parts, ignore_index=True)
+    print(f"[qmugs] {len(df):,} unique molecules")
+
+    ik_col = next((c for c in df.columns if "inchikey" in c.lower()
+                   or "inchi_key" in c.lower()), None)
+    if ik_col:
+        print(f"[qmugs] using existing InChIKey column '{ik_col}'")
+        df["inchikey"] = df[ik_col].astype(str)
+    else:
+        print(f"[qmugs] computing {len(df):,} InChIKeys in parallel "
+              f"({workers or os.cpu_count()} workers); this is the slow step")
+        df["inchikey"] = _keys_parallel(df[smi_col].astype(str).tolist(), workers)
+
+    df = df[df["inchikey"].notna() & (df["inchikey"].astype(str) != "nan")].copy()
     df["skeleton"] = df["inchikey"].astype(str).str.split("-").str[0]
-    return df.dropna(subset=["inchikey"]).drop_duplicates(subset="inchikey")
+    return df.drop_duplicates(subset="inchikey")
 
 
 def report(ds: str, ours: pd.DataFrame, qmugs: pd.DataFrame | None) -> dict:
@@ -98,10 +164,20 @@ def main() -> None:
     ap.add_argument("--qmugs", default=None,
                     help="QMugs summary table (.csv or .parquet) with a SMILES column")
     ap.add_argument("--outdir", default="results")
+    ap.add_argument("--workers", type=int, default=None,
+                    help="processes for InChIKey generation (default: all cores)")
+    ap.add_argument("--peek", action="store_true",
+                    help="print the QMugs columns and exit")
     args = ap.parse_args()
 
+    if args.peek:
+        if not args.qmugs:
+            raise SystemExit("--peek needs --qmugs")
+        print(peek_columns(args.qmugs).head(3).to_string())
+        return
+
     os.makedirs(args.outdir, exist_ok=True)
-    qmugs = load_qmugs(args.qmugs) if args.qmugs else None
+    qmugs = load_qmugs(args.qmugs, workers=args.workers) if args.qmugs else None
     if qmugs is None:
         print("[qmugs] no --qmugs table given; caching our InChIKeys only")
 
