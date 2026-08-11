@@ -165,6 +165,7 @@ src/model.py     GINE message-passing network with residual connections
 src/train.py     training loop, early stopping, metrics
 src/run_all.py   {model} x {split} x {seed} grid -> results/*.csv
 src/analyze.py   figures, worst-prediction table, applicability domain
+src/learning_curve.py  test error vs. training-set size, scaffold split
 ```
 
 ## Design notes

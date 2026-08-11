@@ -40,6 +40,17 @@ Smoke test:
 python -m src.run_all --dataset esol --seeds 0 --splits scaffold --epochs 20
 ```
 
+## Learning curve
+
+Test error vs. training-set size, scaffold split:
+
+```bash
+python -m src.learning_curve --dataset lipo --seeds 0 1 2
+```
+
+Writes `results/curve_lipo.csv` and `results/curve_lipo.png`. Use `--sizes` to override
+the default log grid.
+
 ## Options
 
 ```
