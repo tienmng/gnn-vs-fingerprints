@@ -51,6 +51,17 @@ python -m src.learning_curve --dataset lipo --seeds 0 1 2
 Writes `results/curve_lipo.csv` and `results/curve_lipo.png`. Use `--sizes` to override
 the default log grid.
 
+## Cross-dataset summary
+
+After running the above on more than one dataset:
+
+```bash
+python -m src.summarize
+```
+
+Reads every `results/runs_*.csv` and `results/curve_*.csv` present and writes
+`results/fig_all_curves.png`, `results/fig_all_splits.png` and `results/summary_all.md`.
+
 ## Options
 
 ```

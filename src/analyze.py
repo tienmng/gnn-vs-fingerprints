@@ -78,7 +78,10 @@ def parity_figure(preds: pd.DataFrame, ds: str, out: str) -> None:
     plt.close(fig)
 
 
-def worst_predictions(preds: pd.DataFrame, ds: str, outdir: str, n: int = 20) -> pd.DataFrame:
+def worst_predictions(preds: pd.DataFrame, ds: str, outdir: str, n: int = 20,
+                      task: str = "regression") -> pd.DataFrame:
+    """Largest test errors. For classification these are the most confidently wrong
+    predictions, since y_pred is a probability and y_true is 0/1."""
     sub = preds[(preds.split == "scaffold") & (preds.model == "gnn")].copy()
     if sub.empty:
         sub = preds[preds.split == "scaffold"].copy()
@@ -182,10 +185,13 @@ def main() -> None:
     headline_figure(runs, key, ds, f"{args.outdir}/fig_{ds}.png")
     if spec.task == "regression":
         parity_figure(preds, ds, f"{args.outdir}/parity_{ds}.png")
-        worst = worst_predictions(preds, ds, args.outdir)
-        print("\nWorst 20 test predictions (scaffold split):")
-        print(worst[["smiles", "y_true", "y_pred", "abs_err", "MolWt", "MolLogP"]]
-              .head(10).to_string(index=False))
+
+    worst = worst_predictions(preds, ds, args.outdir, task=spec.task)
+    label = ("Worst 20 test predictions" if spec.task == "regression"
+             else "20 most confidently wrong test predictions")
+    print(f"\n{label} (scaffold split):")
+    print(worst[["smiles", "y_true", "y_pred", "abs_err", "MolWt", "MolLogP"]]
+          .head(10).to_string(index=False))
 
     from .data import load_dataframe
     all_smiles = load_dataframe(spec, csv=args.csv).smiles.tolist()
