@@ -1,9 +1,8 @@
 """Train / val / test splitters.
 
-The whole point of the project lives in this file. A random split on molecular
-data leaks near-duplicate analogues between train and test and inflates every
-metric. A scaffold split forces the model to generalise to unseen chemotypes,
-which is what actually happens when a project moves to a new series.
+A random split on molecular data places near-duplicate analogues in both train and
+test. A Bemis-Murcko scaffold split keeps each scaffold in a single partition, so
+the test set requires generalisation to unseen chemotypes.
 """
 from __future__ import annotations
 
@@ -43,10 +42,9 @@ def scaffold_split(
 ) -> tuple[list[int], list[int], list[int]]:
     """Group molecules by Bemis-Murcko scaffold; no scaffold spans two splits.
 
-    balanced=True reproduces the Chemprop convention: scaffold groups larger
-    than half a split go straight to train, the remainder are shuffled with
-    `seed` and greedily packed. This gives you seed-to-seed variation (so error
-    bars mean something) while keeping the split genuinely hard.
+    balanced=True follows the Chemprop convention: scaffold groups larger than
+    half a split go to train, the remainder are shuffled with `seed` and greedily
+    packed. This produces seed-to-seed variation while keeping the split hard.
     """
     groups: dict[str, list[int]] = defaultdict(list)
     for i, smi in enumerate(smiles):
@@ -85,7 +83,7 @@ def get_split(kind: str, smiles: list[str], seed: int = 0, frac=(0.8, 0.1, 0.1))
 
 
 def split_report(smiles: list[str], train, val, test) -> dict:
-    """Sanity metrics you should print for every split. Scaffold overlap must be 0."""
+    """Split diagnostics. train_test_scaffold_overlap must be 0 for scaffold splits."""
     sc = [murcko_scaffold(s) for s in smiles]
     s_tr = {sc[i] for i in train}
     s_te = {sc[i] for i in test}

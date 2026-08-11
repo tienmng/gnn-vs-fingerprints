@@ -1,7 +1,6 @@
-"""A GINE message-passing network with edge features and residual connections.
+"""GINE message-passing network with edge features and residual connections.
 
-Kept deliberately small and readable: ~50 lines is enough to be competitive on
-MoleculeNet-scale data, and anything bigger just overfits 1k molecules.
+Sized for MoleculeNet-scale data; larger models overfit datasets of ~1k molecules.
 """
 from __future__ import annotations
 

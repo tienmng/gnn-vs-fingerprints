@@ -1,66 +1,60 @@
-# Quickstart — from zero to a pushed repo
+# Quickstart
 
-## A. Run it (Colab, ~25 min)
+## Colab
 
-1. https://colab.research.google.com → **Runtime → Change runtime type → T4 GPU**
-2. Upload `notebooks/colab.ipynb`, or paste these cells:
+Runtime -> Change runtime type -> T4 GPU. Open `notebooks/colab.ipynb` and run all,
+or paste:
 
 ```python
 !pip -q install rdkit lightgbm torch_geometric
-!git clone -q https://github.com/<you>/gnn-vs-fingerprints.git
+!git clone -q https://github.com/tienmng/gnn-vs-fingerprints.git
 %cd gnn-vs-fingerprints
 !python -m src.run_all --dataset esol --seeds 0 1 2
 !python -m src.analyze --dataset esol
 ```
 
-3. Download `results/` and drop it into your local clone.
+Save and download:
 
-Before pushing the repo you can develop against a local copy: zip `src/`, upload it to
-the Colab file pane, and skip the `git clone` cell.
+```python
+!zip -qr results.zip results
+from google.colab import files
+files.download("results.zip")
+```
 
-## B. Run it locally (CPU is fine, ~30 min)
+Unzip `results/` into your local clone before committing.
+
+## Local
+
+Requires Python 3.10+.
 
 ```bash
-cd gnn-vs-fingerprints
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m src.run_all --dataset esol --seeds 0 1 2
 python -m src.analyze --dataset esol
 ```
 
-Faster smoke test first (~2 min), to confirm everything imports and runs:
+Smoke test:
 
 ```bash
 python -m src.run_all --dataset esol --seeds 0 --splits scaffold --epochs 20
 ```
 
-## C. Fill in the README
+## Options
 
-`src/analyze.py` writes `results/table_esol.md`. Paste it into the Results section,
-then fill in every `<!-- FILL IN -->` block. There are six. Budget 40 minutes and
-do not exceed it.
-
-## D. Push
-
-```bash
-cd gnn-vs-fingerprints
-git init -b main
-git add .
-git commit -m "GNN vs fingerprints: random vs scaffold split comparison"
-gh repo create gnn-vs-fingerprints --public --source=. --push
+```
+--dataset   esol | lipo | bbbp | bace
+--seeds     seeds to average over
+--splits    random scaffold
+--models    baseline gnn
+--epochs    max epochs before early stopping
+--csv       local CSV instead of downloading
 ```
 
-No `gh` CLI? Create the empty repo on github.com, then:
+## Commit
 
 ```bash
-git remote add origin https://github.com/<you>/gnn-vs-fingerprints.git
-git push -u origin main
+git add results README.md
+git commit -m "Results"
+git push
 ```
-
-Commit `results/` — the CSVs and figures are the deliverable, not the code.
-
-## E. Then
-
-Add the repo link to your CV and LinkedIn with the one-sentence result, not the title.
-"Measured how much of a GNN's apparent advantage over fingerprints is an artefact of
-random splitting" beats "Built a graph neural network for molecular property prediction".

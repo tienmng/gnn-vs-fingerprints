@@ -1,8 +1,8 @@
 """Dataset loading, cleaning, and graph featurisation.
 
-Deliberately does NOT use torch_geometric.datasets.MoleculeNet: writing your own
-featuriser is ~60 lines, makes the atom/bond features explicit and defensible in
-an interview, and lets the same code run on any CSV of SMILES + label.
+Does not use torch_geometric.datasets.MoleculeNet. The featuriser here is explicit
+about which atom and bond properties enter the graph, and runs on any CSV of
+SMILES + label.
 """
 from __future__ import annotations
 

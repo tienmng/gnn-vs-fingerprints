@@ -1,13 +1,14 @@
-"""Figures + error analysis. Run after src.run_all.
+"""Figures and error analysis. Run after src.run_all.
 
     python -m src.analyze --dataset esol
 
 Produces:
-  results/fig_<ds>.png          headline bar chart (the README figure)
+  results/fig_<ds>.png          RMSE / ROC-AUC by model and split
   results/parity_<ds>.png       predicted vs measured, scaffold split
   results/worst20_<ds>.csv      worst test predictions with descriptors
   results/worst20_<ds>.png      those molecules drawn
   results/error_vs_sim_<ds>.png error vs Tanimoto similarity to training set
+  results/table_<ds>.md         summary table in markdown
 """
 from __future__ import annotations
 
@@ -103,8 +104,8 @@ def worst_predictions(preds: pd.DataFrame, ds: str, outdir: str, n: int = 20) ->
 
 
 def _save_grid(mols, legends, stem: str) -> str:
-    """MolsToGridImage returns a PIL image, raw PNG bytes or an SVG string
-    depending on RDKit version and whether you are in a notebook. Handle all."""
+    """MolsToGridImage returns a PIL image, PNG bytes or an SVG string depending on
+    RDKit version and execution context. Handle all three."""
     kw = dict(molsPerRow=5, subImgSize=(230, 190), legends=legends)
     try:
         img = Draw.MolsToGridImage(mols, returnPNG=False, **kw)
@@ -125,7 +126,7 @@ def _save_grid(mols, legends, stem: str) -> str:
 
 
 def error_vs_similarity(preds: pd.DataFrame, all_smiles: list[str], ds: str, out: str) -> pd.DataFrame:
-    """Applicability domain: does error rise as test molecules get more novel?"""
+    """Applicability domain: error binned by similarity to the nearest training molecule."""
     sub = preds[(preds.split == "scaffold")].copy()
     seed = sub.seed.min()
     sub = sub[sub.seed == seed]
@@ -192,7 +193,7 @@ def main() -> None:
     print("\nError vs similarity to training set:")
     print(tab.to_string(index=False))
 
-    # markdown table you can paste straight into the README
+    # markdown summary table
     md = (runs.groupby(["model", "split"])[key]
           .agg(["mean", "std"]).round(3).reset_index())
     lines = [f"| model | split | {key} (mean ± s.d.) |", "|---|---|---|"]

@@ -1,9 +1,9 @@
-"""The experiment grid: {baseline, gnn} x {random, scaffold} x {3 seeds}.
+"""Experiment grid: {baseline, gnn} x {random, scaffold} x {seeds}.
 
     python -m src.run_all --dataset esol --seeds 0 1 2
 
-Writes results/runs_<dataset>.csv and results/preds_<dataset>.csv.
-Everything downstream (figure, error analysis, README table) reads those files.
+Writes results/runs_<dataset>.csv, results/preds_<dataset>.csv and
+results/summary_<dataset>.csv. src.analyze reads those files.
 """
 from __future__ import annotations
 

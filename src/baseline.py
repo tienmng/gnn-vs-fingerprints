@@ -1,9 +1,4 @@
-"""The baseline you have to beat: Morgan fingerprints + RDKit descriptors -> LightGBM.
-
-Build this before the GNN. On datasets of a few thousand molecules it is very
-often the stronger model, and a portfolio that reports that honestly is worth
-more than one that hides it.
-"""
+"""Baseline model: Morgan fingerprints + RDKit descriptors -> LightGBM."""
 from __future__ import annotations
 
 import numpy as np

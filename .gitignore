@@ -8,6 +8,8 @@ data/
 *.pt
 *.ckpt
 .DS_Store
+**/.DS_Store
+results.zip
 .vscode/
 .idea/
 

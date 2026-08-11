@@ -78,8 +78,8 @@ def train_gnn(
     va = [graphs[i] for i in val_idx]
     te = [graphs[i] for i in test_idx]
 
-    # Standardise the target using TRAIN statistics only. Using the full dataset
-    # here is a classic and invisible leak.
+    # Standardise the target using train statistics only; whole-dataset
+    # statistics leak test information into training.
     if task == "regression":
         y_tr = np.array([float(g.y) for g in tr])
         mu, sigma = float(y_tr.mean()), float(y_tr.std() + 1e-8)
