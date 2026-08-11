@@ -73,6 +73,18 @@ Reads every `results/runs_*.csv` and `results/curve_*.csv` present and writes
 --csv       local CSV instead of downloading
 ```
 
+## Quantum descriptor availability
+
+How many molecules already have precomputed QMugs descriptors:
+
+```bash
+python -m src.qmugs_overlap --datasets esol lipo bace bbbp --qmugs path/to/summary.csv
+```
+
+Without `--qmugs` it caches `results/inchikeys_<ds>.csv` only. With it, also writes
+`results/qmugs_join_<ds>.csv` (descriptors merged onto our molecules) and
+`results/qmugs_overlap.csv`.
+
 ## Commit
 
 ```bash

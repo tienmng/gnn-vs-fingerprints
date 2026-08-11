@@ -1,0 +1,5 @@
+model,split,mean,std,count
+baseline,random,0.899,0.026,3
+baseline,scaffold,0.877,0.04,3
+gnn,random,0.871,0.027,3
+gnn,scaffold,0.856,0.042,3

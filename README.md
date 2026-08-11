@@ -1,132 +1,120 @@
 # When does a graph neural network actually beat molecular fingerprints?
 
-**On lipophilicity, a GINE message-passing network overtakes a Morgan-fingerprint LightGBM
-baseline between 250 and 500 training molecules and stays ahead by 0.03–0.10 RMSE. On
-aqueous solubility it never overtakes it, at any training size up to the full dataset. The
-deciding factor is the endpoint, not the data scale — and on ESOL, changing the split
-protocol moves RMSE an order of magnitude more than changing the model.**
+**Across four MoleculeNet datasets, a GINE message-passing network beats a Morgan-fingerprint
+LightGBM baseline on the most structurally novel test molecules every time such molecules
+exist — by 0.15 to 0.23 in mean absolute error, on all three datasets with test compounds
+below 0.3 Tanimoto similarity to training. It wins on aggregate in only two of the four. The
+difference is test-set composition: BACE, the one dataset where the GNN never leads at any
+training size, contains no test molecule below 0.4 similarity at all.**
 
-Both models evaluated under Bemis–Murcko scaffold splits, 3 seeds per configuration, on
-MoleculeNet ESOL (n=1,117) and Lipophilicity (n=4,200).
+Aggregate benchmark scores are therefore as much a property of how a dataset was assembled
+as of the model being scored.
 
-![learning curve](results/curve_lipo.png)
+Both models, four datasets, random and Bemis–Murcko scaffold splits, learning curves from
+100 molecules to full size, 3 seeds throughout. All comparisons are paired within seed.
+
+![learning curves](results/fig_all_curves.png)
 
 ## Takeaways
 
-- **The crossover is at 250–500 molecules on lipophilicity.** Below it the fingerprint
-  baseline wins on every seed; above it the GNN wins on every seed.
-- **There is no crossover on solubility.** At n=893 the two models are level (0.819 vs
-  0.816), and the GNN never pulls ahead. Data scale alone does not explain the difference
-  between the two datasets.
-- **The GNN advantage does not widen with more data.** After crossover it stays at
-  0.03–0.10 RMSE rather than growing.
-- **Protocol beats architecture on ESOL.** Random → scaffold split costs 0.163–0.178 RMSE;
-  baseline → GNN changes it by 0.003–0.012.
-- **Scaffold-split seed variance (±0.15) exceeds the model gap**, so single-seed comparisons
-  on ESOL cannot resolve architecture differences.
-- **Model ranking also depends on novelty.** On ESOL the GNN is better below 0.3 Tanimoto
-  similarity to training and worse above it; the aggregate metric hides this.
-- **Half the worst-case ESOL error is one scaffold family.** The splitter placed all
-  monocyclic pyridines in the test set; ten of the twenty worst predictions are pyridines,
-  all failing in the same direction.
+- **A seed-consistent crossover exists on 2 of 4 datasets**, both between 250 and 500
+  training molecules (lipophilicity, BBBP). ESOL and BACE never cross.
+- **Where the GNN wins, it wins by little**: +7.4% of the baseline score on lipophilicity,
+  +2.1% on BBBP. Where it loses: −0.3% on ESOL, −2.4% on BACE.
+- **The GNN's advantage is concentrated in novel chemistry.** In the 0.0–0.3 similarity bin
+  it beats the baseline on all three datasets that have one. It converts that into an
+  aggregate win only where it is also competitive in the similar bins.
+- **BACE has no novel chemistry to test on.** Every test molecule is ≥0.4 similar to
+  training, so the regime where the GNN helps is simply absent — and the GNN loses at every
+  training size.
+- **The split effect is not universal.** Scaffold splitting is much harder than random on
+  both regression sets (ESOL +21%, 6/6 pairings; lipophilicity +10.6%, 5/6) and neither
+  harder nor easier on both classification sets (BACE +2.1%, 2/6; BBBP −2.6%, 1/6).
+- **Paired comparison is necessary.** A first version of `summarize.py` called a crossover
+  wherever the mean difference changed sign, and reported one on ESOL where only 1 seed in 3
+  favoured the GNN. See "Methods note" below.
 
 ---
 
-## Learning curve (Lipophilicity)
+## Split effect vs. model effect
 
-Training set subsampled under a fixed scaffold split; validation and test sets held constant
-per seed; subsets nested.
+![split vs model effect](results/fig_all_splits.png)
 
-| n_train | baseline RMSE | GNN RMSE | GNN − baseline | seeds favouring GNN |
-|---|---|---|---|---|
-| 100 | 1.070 | 1.267 | +0.197 ± 0.026 | 0 / 3 |
-| 250 | 0.986 | 0.990 | +0.005 ± 0.032 | 1 / 3 |
-| 500 | 0.913 | 0.813 | −0.100 ± 0.047 | 3 / 3 |
-| 1,000 | 0.825 | 0.751 | −0.074 ± 0.026 | 3 / 3 |
-| 2,000 | 0.752 | 0.726 | −0.026 ± 0.018 | 3 / 3 |
-| 3,360 | 0.712 | 0.656 | −0.056 ± 0.081 | 2 / 3 |
+Scaffold minus random, paired within (model, seed); and GNN minus baseline on the scaffold
+split, paired within seed. Positive means the scaffold split is harder, or the GNN is better.
 
-The paired difference is reported because both models see the same split and the same
-training subset within a seed. Its standard deviation (0.02–0.08) is smaller than that of
-either model alone (0.06–0.10), so the shaded bands in the figure overstate the uncertainty
-in the comparison.
+| dataset | metric | split effect | pairs scaffold harder | model effect | seeds GNN wins |
+|---|---|---|---|---|---|
+| ESOL | RMSE | **+0.171** (+21.0%) | **6/6** | −0.003 (−0.3%) | 1/3 |
+| Lipophilicity | RMSE | +0.075 (+10.6%) | 5/6 | **+0.052** (+7.4%) | **3/3** |
+| BACE | ROC-AUC | +0.019 (+2.1%) | 2/6 | −0.021 (−2.4%) | 0/3 |
+| BBBP | ROC-AUC | −0.024 (−2.6%) | 1/6 | +0.019 (+2.1%) | **3/3** |
 
-The sign flips between 250 and 500 molecules, and all three seeds agree at 500, 1,000 and
-2,000. The gap does not grow monotonically afterwards.
+On ESOL the split effect is 57× the model effect and unanimous across pairings — the result
+that motivated this repo. But it does not generalise. On both classification datasets the
+split effect is within seed noise, and on BBBP the scaffold split is *easier* than random in
+5 of 6 pairings.
 
-### Why solubility behaves differently
+One plausible reason, offered as interpretation rather than result: ROC-AUC is a ranking
+metric and is insensitive to a uniform shift in predicted scores, whereas RMSE is not, so
+covariate shift between train and test costs a regression model more than a classifier.
+BBBP additionally has well-documented label noise and strong class imbalance, either of
+which can swamp a small split effect.
 
-At comparable training size the two datasets disagree: 1,000 lipophilicity molecules give
-the GNN a 0.074 advantage, while 893 solubility molecules give it none. LogD is largely a
-function of 2D topology and additive fragment contributions, which message passing can
-learn. Aqueous solubility additionally depends on solid-state lattice energy — the General
-Solubility Equation approximates logS ≈ 0.5 − 0.01(MP − 25) − logP, and melting point is not
-a function of the molecular graph. On ESOL the extra capacity of the GNN has no accessible
-signal to fit, which is consistent with the error analysis below.
+## Learning curves
 
----
+| dataset | crossover | advantage at full size | seeds |
+|---|---|---|---|
+| ESOL | none (best 1/3, at n=250) | +0.012 | 1/3 |
+| Lipophilicity | **between 250 and 500** | +0.056 | 2/3 |
+| BACE | none (best 1/3, at n=100) | −0.074 | 1/3 |
+| BBBP | **between 250 and 500** | +0.005 | 2/3 |
 
-## ESOL results
+Paired advantage by training size is in `results/paired_curve_all.csv`. On lipophilicity the
+GNN wins on 3/3 seeds at n=500, 1,000 and 2,000. Below ~250 molecules the baseline wins
+everywhere, on every dataset, by a wide margin (0.16–0.20 RMSE on the regression sets).
 
-Aqueous solubility (log mol/L), 1,117 clean unique molecules, 80/10/10 split.
-
-| model | split | RMSE (mean ± s.d., 3 seeds) |
-|---|---|---|
-| baseline (Morgan + descriptors → LightGBM) | random | 0.653 ± 0.032 |
-| baseline | scaffold | 0.816 ± 0.148 |
-| GINE MPNN | random | 0.641 ± 0.067 |
-| GINE MPNN | scaffold | 0.819 ± 0.168 |
-
-| effect | size |
-|---|---|
-| split protocol (random → scaffold), baseline | +0.163 RMSE (+25%) |
-| split protocol (random → scaffold), GNN | +0.178 RMSE (+28%) |
-| model choice (baseline → GNN), random split | −0.012 RMSE |
-| model choice (baseline → GNN), scaffold split | +0.003 RMSE |
-
-![rmse by model and split](results/fig_esol.png)
-
-Test sets are not touched during training or model selection; early stopping uses the
-validation split only. Train/test scaffold overlap is asserted to be 0 on every
-scaffold-split run (`src/run_all.py`). The random split leaks 22 shared scaffolds into the
-test set.
-
-## Split protocol vs. model choice
-
-A random split places close analogues of test molecules in the training set. Removing that
-leak costs 0.163–0.178 RMSE, about a quarter of total error. The difference between
-architectures is 0.003–0.012, smaller than the seed-to-seed standard deviation of either
-model under either split.
-
-Seed variance rises from 0.032 to 0.148 (baseline) and 0.067 to 0.168 (GNN) under scaffold
-splitting, because there are only 269 scaffolds and which ones land in test matters. A
-single-seed scaffold-split number on ESOL carries roughly ±0.15 RMSE of noise, more than ten
-times the model difference it would be used to demonstrate. Three seeds gives a crude s.d.
-estimate; treat it as an order of magnitude.
+The advantage does not widen with more data. On lipophilicity it peaks at n=500 (+0.100) and
+is smaller at full size (+0.056).
 
 ## Applicability domain
 
-Mean absolute error against maximum Tanimoto similarity to any training molecule, ESOL
-scaffold split.
+Mean absolute error binned by maximum Tanimoto similarity to any training molecule, scaffold
+split. Positive `Δ` means the GNN is better.
 
-![applicability domain](results/error_vs_sim_esol.png)
+| similarity bin | ESOL Δ (n) | Lipo Δ (n) | BACE Δ (n) | BBBP Δ (n) |
+|---|---|---|---|---|
+| 0.0 – 0.3 | **+0.225** (30) | **+0.224** (36) | — (0) | **+0.155** (20) |
+| 0.3 – 0.4 | −0.161 (25) | +0.092 (70) | — (0) | +0.212 (37) |
+| 0.4 – 0.5 | −0.074 (29) | +0.040 (61) | +0.229 (4) | +0.153 (40) |
+| 0.5 – 0.7 | −0.225 (18) | +0.069 (132) | +0.072 (54) | +0.277 (81) |
+| 0.7 – 1.0 | −0.084 (11) | +0.035 (121) | +0.021 (94) | +0.292 (20) |
 
-| max Tanimoto to train | n | baseline MAE | GNN MAE |
-|---|---|---|---|
-| 0.0 – 0.3 | 30 | 1.132 | **0.906** |
-| 0.3 – 0.4 | 25 | **0.696** | 0.857 |
-| 0.4 – 0.5 | 29 | **0.752** | 0.826 |
-| 0.5 – 0.7 | 18 | **0.557** | 0.782 |
-| 0.7 – 1.0 | 11 | **0.449** | 0.532 |
+![ESOL applicability domain](results/error_vs_sim_esol.png)
 
-The curves cross. The baseline degrades 2.5× from the most- to least-similar bin; the GNN
-1.7×. The baseline is the better model above ~0.3 similarity and the worse model below it.
+This is the most consistent result in the project. Wherever a test set contains molecules
+below 0.3 similarity to anything in training, the GNN predicts them better — on ESOL,
+lipophilicity and BBBP alike, by a similar margin each time. A Morgan fingerprint is a
+similarity-matching representation: it performs well when the test molecule resembles a
+training molecule and degrades sharply when it does not. On ESOL the baseline's error is 2.5×
+higher in the least-similar bin than the most; the GNN's is 1.7×.
 
-A Morgan fingerprint is a similarity-matching representation, so it performs well when the
-test molecule resembles a training molecule and poorly when it does not. Averaged over the
-full test set the two effects cancel, which is why the aggregate RMSE shows no difference.
-The highest-similarity bin holds 11 molecules and is noisy; the 0.0–0.3 bin (n=30) is better
-supported.
+Two consequences follow.
+
+**BACE's test set has no molecules below 0.4 similarity.** It is a single-target inhibitor
+series, so the region where the GNN helps does not occur, and BACE is exactly the dataset
+where the GNN loses at every training size. The model comparison was decided by dataset
+construction before either model was trained.
+
+**A bin-level advantage need not become an aggregate one.** ESOL has the largest share of
+novel test molecules of the four (49% below 0.4 similarity), and the GNN still wins only
+that one bin — it is worse in the other four, which hold the remaining 51% of the test set.
+Lipophilicity is the case where the GNN is better in every bin, and it is the dataset with
+the clearest aggregate win.
+
+BBBP is anomalous: the baseline's error *rises* with similarity to training (0.327 → 0.447),
+the opposite of the expected direction. Consistent with the label-noise caveat above, and
+not otherwise explained here.
 
 ## Error analysis (ESOL)
 
@@ -134,14 +122,12 @@ supported.
 
 Predicted vs. measured on the scaffold-split test set, seed 0 only — these RMSE values are
 one draw, not the 3-seed means above. Both models compress the range: points sit above the
-diagonal at the insoluble end and below it at the soluble end. The GNN extrapolates further
-into the low tail, the baseline flattens against it.
-
-The 20 worst test predictions, with descriptors in `results/worst20_esol.csv`.
+diagonal at the insoluble end and below it at the soluble end.
 
 ![worst predictions](results/worst20_esol.png)
 
-Seventeen of the twenty fall into two chemical families, failing in opposite directions.
+Seventeen of the twenty worst predictions fall into two chemical families, failing in
+opposite directions.
 
 **Ten substituted pyridines, all predicted too insoluble.** Nicotinamide, four lutidines,
 2-ethylpyridine, 2- and 4-hydroxypyridine, isoniazid. Measured 0.0 to +1.0, predicted −0.7
@@ -153,38 +139,52 @@ two pyrethroid esters, two benzoylureas, a hydroxycoumarin, an organophosphate p
 a diaryl ether. Measured −6.0 to −8.6, predicted −4.4 to −6.6.
 
 The pyridine cluster follows from the split. Bemis–Murcko groups monocyclic azines under one
-scaffold, so the splitter moved the whole family into the test set. No pyridine appears in
-training, and the model applies the shrinkage learned from carbocyclic aromatics instead.
-Half the worst-case error comes from one missing scaffold group — which is also why the
-aggregate RMSE varies so much between seeds.
+scaffold, so the splitter moved the whole family into the test set at once. No pyridine
+appears in training, and the model applies the shrinkage learned from carbocyclic aromatics
+instead. Half the worst-case error comes from one missing scaffold group — which is also why
+ESOL's seed variance (±0.15 RMSE) is the largest of the four datasets.
 
-## Practical reading
+There is a representational limit under the second cluster. Aqueous solubility depends on
+solid-state lattice energy as well as partitioning; the General Solubility Equation
+approximates logS ≈ 0.5 − 0.01(MP − 25) − logP, and melting point is not a function of the
+2D molecular graph. Part of this error is not addressable by architecture changes on 2D
+inputs. Equivalent tables for lipophilicity are in `results/worst20_lipo.csv`.
 
-Below a few hundred training molecules, use fingerprints: the GNN is worse and far more
-expensive. Above roughly 500, the GNN is worth training if the endpoint is a function of
-molecular topology. If the endpoint depends on properties the graph does not encode — solid
-state behaviour, conformational ensembles — extra model capacity buys little, and the
-limiting factor is the representation rather than the architecture.
+## Methods note: pairing
 
-Independently of model choice, evaluate on a scaffold or chronological split and report
-multiple seeds. On ESOL both effects are larger than the difference the model comparison is
-trying to detect.
+Within a dataset both models see the same split, the same seed and the same training subset,
+so differences are taken per pair before averaging. This matters more than it sounds.
+
+The first version of `src/summarize.py` declared a crossover wherever the mean difference
+changed sign. That reported a crossover on ESOL at n=500, where the paired mean is +0.003
+and only 1 seed in 3 favours the GNN — an artefact of one large seed swing. The current
+version requires the paired mean to favour the GNN *and* a majority of seeds to agree, and
+for at least half the seeds to keep agreeing at every larger training size. Under that rule
+ESOL has no crossover.
+
+Both criteria are needed. A seed majority alone also fails: on lipophilicity at n=250, 2 of
+3 seeds favour the GNN while the paired mean still favours the baseline, because the single
+loss is larger than the two wins.
+
+Paired standard deviations are roughly half the unpaired ones (e.g. lipophilicity model
+effect: 0.053 paired vs. 0.06–0.10 for either model alone), which is why the shaded bands in
+the learning-curve figure overstate the uncertainty in the comparison between the two lines.
 
 ## Limitations
 
-- Two datasets, one property class each. The endpoint-dependence explanation is an
-  interpretation consistent with both, not a controlled test of it.
-- 3 seeds gives a crude standard deviation estimate.
-- The random vs. scaffold comparison was run on ESOL only; the learning curve was run on
-  lipophilicity only.
+- Four datasets, 3 seeds each. Several differences reported here are of the same order as
+  their paired standard deviation and are described as unresolved where that is the case.
+- The interpretations offered for the classification/regression split-effect difference and
+  for BBBP's inverted applicability-domain curve are not tested here.
 - No hyperparameter search for either model beyond defaults, and the GNN's optimal
-  configuration probably differs between the smallest and largest training sizes.
-- Training subsets are drawn uniformly at random from the training pool, not by scaffold, so
-  small subsets retain more chemotype diversity than a real early-stage project would.
+  configuration probably differs between n=100 and n=3,360.
+- Learning-curve subsets are drawn uniformly from the training pool, not by scaffold, so
+  small subsets retain more chemotype diversity than an early-stage project would have.
 - Scaffold split is a proxy for prospective evaluation; a chronological split is closer to
   how a real programme unfolds.
 - 2D topology only. No conformers, no 3D, no quantum-derived descriptors.
-- Assay error in the reference values is not modelled.
+- Assay error in the reference values is not modelled; BBBP labels in particular are known
+  to be noisy.
 
 ## Reproduce
 
@@ -193,13 +193,15 @@ git clone https://github.com/tienmng/gnn-vs-fingerprints.git
 cd gnn-vs-fingerprints
 pip install -r requirements.txt
 
-python -m src.run_all --dataset esol --seeds 0 1 2
-python -m src.analyze --dataset esol
-python -m src.learning_curve --dataset lipo --seeds 0 1 2
+for ds in esol lipo bace bbbp; do
+  python -m src.run_all        --dataset $ds --seeds 0 1 2
+  python -m src.analyze        --dataset $ds
+  python -m src.learning_curve --dataset $ds --seeds 0 1 2
+done
+python -m src.summarize
 ```
 
-Datasets download to `data/` on first run (`esol`, `lipo`, `bbbp`, `bace`). CPU-runnable.
-See `QUICKSTART.md` for Colab.
+Datasets download to `data/` on first run. CPU-runnable. See `QUICKSTART.md` for Colab.
 
 ## Layout
 
@@ -212,7 +214,7 @@ src/train.py           training loop, early stopping, metrics
 src/run_all.py         {model} x {split} x {seed} grid -> results/*.csv
 src/analyze.py         figures, worst-prediction table, applicability domain
 src/learning_curve.py  test error vs. training-set size, scaffold split
-src/summarize.py       cross-dataset comparison figures and table
+src/summarize.py       paired cross-dataset comparison
 ```
 
 ## Design notes
@@ -222,8 +224,9 @@ src/summarize.py       cross-dataset comparison figures and table
 - Target standardised with training statistics only.
 - Sum pooling alongside mean and max, since solubility scales with molecular size.
 - Early stopping on validation, evaluation on test once.
+- Train/test scaffold overlap asserted to be 0 on every scaffold-split run.
 - Learning-curve subsets are nested and the split is fixed per seed, so the comparison is
-  paired.
+  paired at every point.
 
 ## License
 
