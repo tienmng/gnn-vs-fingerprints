@@ -1,0 +1,7 @@
+features,n_extra,delta_mean,delta_sd,seeds_improved
+mace_flex,2,0.0196,0.0113,3/3
+mace_energy,2,0.0016,0.0211,2/3
+mace_shape,5,-0.0008,0.0223,1/3
+all,9,-0.0121,0.0356,2/3
+qm_only,9,-0.5517,0.0875,0/3
+mean_only,0,-1.5111,0.1361,0/3

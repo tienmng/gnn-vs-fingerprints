@@ -33,10 +33,14 @@ Both models, four datasets, random and Bemis–Murcko scaffold splits, learning 
 - **Paired comparison is necessary.** A first version of `summarize.py` called a crossover
   wherever the mean difference changed sign, and reported one on ESOL where only 1 seed in 3
   favoured the GNN. See "Methods note" below.
-- **Quantum descriptors add nothing.** Precomputed GFN2-xTB and DFT properties from QMugs
-  do not improve on fingerprints for lipophilicity, and two descriptor families measurably
-  degrade it. Fitted alone the quantum block closes only 14% of the gap between a constant
-  prediction and the fingerprint model.
+- **Gas-phase quantum descriptors add nothing.** Precomputed GFN2-xTB and DFT properties
+  from QMugs do not improve on fingerprints for lipophilicity, and two descriptor families
+  measurably degrade it. Fitted alone the quantum block closes only 14% of the gap between
+  a constant prediction and the fingerprint model.
+- **Conformational flexibility does help solubility.** Conformer energy spread computed
+  with MACE-OFF23 is the only descriptor family in either experiment to improve on
+  fingerprints across all seeds (+0.020 RMSE, 3/3). Small, not significant at three seeds,
+  and the term the General Solubility Equation predicts a 2D graph cannot supply.
 
 ---
 
@@ -120,7 +124,17 @@ BBBP is anomalous: the baseline's error *rises* with similarity to training (0.3
 the opposite of the expected direction. Consistent with the label-noise caveat above, and
 not otherwise explained here.
 
-## Do quantum descriptors help? (Lipophilicity)
+## Do physics-based descriptors help?
+
+Two independent sources were tested against the fingerprint baseline: precomputed
+gas-phase quantum properties from QMugs, and conformer-ensemble features computed with
+the MACE-OFF23 foundation interatomic potential. Both use the same within-subset paired
+protocol.
+
+Of eleven descriptor families tested across the two experiments, **one improves on
+fingerprints on every seed**: conformational flexibility, on solubility.
+
+### QMugs quantum descriptors (Lipophilicity)
 
 Precomputed GFN2-xTB and DFT (ωB97X-D/def2-SVP) properties were taken from
 [QMugs](https://doi.org/10.3929/ethz-b-000482129) by InChIKey skeleton match. 3,225 of
@@ -180,6 +194,61 @@ have to be computed with an implicit-solvent method such as GFN2-xTB/ALPB.
 
 Seed 1 scored 0.779 against 0.624 and 0.639 for the other two — the same scaffold-split
 seed instability seen throughout this repo, reappearing in a different experiment.
+
+### MACE-OFF conformer descriptors (ESOL)
+
+MACE-OFF23 is a machine-learned interatomic potential trained on SPICE at
+ωB97M-D3(BJ)/def2-TZVPPD. It returns energies and forces rather than wavefunctions, so
+it supplies no orbital energies or solvation terms — but it does supply relaxed geometry
+and the relative energies of a conformer ensemble, at a few seconds per molecule.
+
+Three ETKDG conformers per molecule, MMFF cleanup, LBFGS relaxation to 0.05 eV/Å in
+float64. All 1,117 ESOL molecules completed.
+
+![MACE descriptor ablation](results/fig_desc_esol.png)
+
+Paired change against fingerprints alone (0.816 ± 0.148); positive is better.
+
+| features | n cols | ΔRMSE | s.d. | seeds improved |
+|---|---|---|---|---|
+| flexibility (conformer energy spread, s.d.) | 2 | **+0.020** | 0.011 | **3/3** |
+| energy (relaxed energy per atom, strain) | 2 | +0.002 | 0.021 | 2/3 |
+| shape (R_g, principal moments, asphericity) | 5 | −0.001 | 0.022 | 1/3 |
+| all MACE descriptors | 9 | −0.012 | 0.036 | 2/3 |
+| MACE only, no fingerprints | 9 | −0.552 | 0.088 | 0/3 |
+| constant prediction (training mean) | 0 | −1.511 | 0.136 | 0/3 |
+
+**Flexibility is the only descriptor family in either experiment that improves on
+fingerprints across all seeds.** The effect is small: +0.020 RMSE on a baseline of 0.816,
+about 2.4%. With three seeds the paired t-statistic is roughly 3.0 on 2 degrees of
+freedom, so the direction is consistent but the effect is not significant at conventional
+thresholds. It is a signal worth following, not a settled result.
+
+This is the term the General Solubility Equation predicts a 2D graph cannot supply.
+Aqueous solubility depends on the crystal lattice, and lattice energy depends on molecular
+rigidity; conformer energy spread is a computable proxy for that rigidity, and molecular
+topology is not. Of the descriptors tested, the one that helped is the one predicted to
+help, on the endpoint predicted to need it.
+
+Two observations qualify it. Adding all nine descriptors together is *worse* than adding
+the two flexibility columns alone — the same dilution effect measured on lipophilicity.
+And the spread descriptor is zero-inflated: a quarter of ESOL molecules are rigid enough
+to have a single minimum, so the signal comes from the flexible half of the dataset only.
+
+Fitted without fingerprints, the nine MACE descriptors reach 1.368 against 2.328 for a
+constant prediction and 0.816 for fingerprints — closing 63% of the gap, against 14% for
+QMugs' 53 gas-phase columns on lipophilicity. Most of that is molecular size: relaxed
+energy per atom tracks elemental composition, and the moments of inertia track volume,
+both of which dominate solubility. The incrementally useful part is flexibility alone.
+
+### Control not yet run
+
+Flexibility was tested on solubility and the QMugs descriptors on lipophilicity, so the
+endpoint-specific claim rests on a comparison across two different descriptor sets. The
+missing control is MACE conformer descriptors on lipophilicity: if flexibility helps there
+too, it is a generically useful 3D feature rather than evidence for the lattice-energy
+argument. Lipophilicity is 4,200 molecules at roughly 5 s each, so the control is a
+several-hour run and is not included here.
 
 ## Error analysis (ESOL)
 
