@@ -88,7 +88,15 @@ def embed_conformers(smiles: str, n_conf: int = 5, seed: int = 42):
     params = AllChem.ETKDGv3()
     params.randomSeed = seed if seed != 0 else 42
     params.useSmallRingTorsions = True
-    ids = AllChem.EmbedMultipleConfs(mol, numConfs=n_conf, params=params)
+    # ETKDG can raise on structures its BFGS stage cannot handle
+    # ("bad direction in linearSearch"), not just return zero conformers.
+    try:
+        ids = AllChem.EmbedMultipleConfs(mol, numConfs=n_conf, params=params)
+    except Exception:
+        try:                       # plain distance geometry, no torsion knowledge
+            ids = AllChem.EmbedMultipleConfs(mol, numConfs=n_conf, randomSeed=seed or 42)
+        except Exception:
+            return []
     if len(ids) == 0:
         return []
     try:
@@ -274,14 +282,27 @@ def main() -> None:
     else:
         calc = get_calculator(args.model, args.device, args.dtype)
         t0 = time.time()
+        failed = []
         for i, (smi, y) in enumerate(todo):
-            rows.append(dict(smiles=smi, y=y, **describe(smi, calc, args.n_conformers)))
+            try:
+                feats = describe(smi, calc, args.n_conformers)
+            except Exception as exc:
+                # A single pathological molecule must not end a long run; record
+                # it as missing and continue.
+                failed.append((smi, type(exc).__name__))
+                feats = {k: np.nan for k in FEATURES}
+            rows.append(dict(smiles=smi, y=y, **feats))
             if (i + 1) % args.checkpoint_every == 0:
                 pd.DataFrame(rows).to_csv(path, index=False)
                 rate = (time.time() - t0) / (i + 1)
                 left = rate * (len(todo) - i - 1)
                 print(f"[mace] {i + 1}/{len(todo)}  {rate:.2f}s/mol  "
-                      f"~{left / 60:.1f} min left  (checkpointed)")
+                      f"~{left / 60:.1f} min left  (checkpointed)"
+                      + (f"  {len(failed)} failed" if failed else ""))
+        if failed:
+            print(f"\n[mace] {len(failed)} molecules failed and are recorded as missing:")
+            for smi, exc in failed[:10]:
+                print(f"    {exc:22s} {smi}")
 
     out = pd.DataFrame(rows)
     out.to_csv(path, index=False)
