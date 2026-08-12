@@ -50,7 +50,7 @@ FEATURES = [
 ]
 
 
-def get_calculator(model: str = "medium", device: str | None = None, dtype: str = "float32"):
+def get_calculator(model: str = "medium", device: str | None = None, dtype: str = "float64"):
     """MACE-OFF as an ASE calculator. Import is deferred so the module loads
     without mace-torch installed."""
     import torch
@@ -61,8 +61,23 @@ def get_calculator(model: str = "medium", device: str | None = None, dtype: str 
     return mace_off(model=model, device=device, default_dtype=dtype)
 
 
-def embed_conformers(smiles: str, n_conf: int = 5, seed: int = 0):
-    """ETKDG conformers with MMFF cleanup, returned as ASE Atoms."""
+def embed_conformers(smiles: str, n_conf: int = 5, seed: int = 42):
+    """ETKDG conformers with MMFF cleanup, returned as ASE Atoms.
+
+    Two ETKDG settings silently destroy the ensemble and are avoided here.
+
+    randomSeed=0 returns n identical conformers. Measured on n-octanol with
+    numConfs=4: seed 0 gives pairwise RMSD 0.000 A, seed 42 gives 1.8-6.0 A.
+    Any non-zero seed is fine, so 0 is remapped rather than accepted.
+
+    pruneRmsThresh collapses the ensemble to a single conformer even for
+    flexible chains. Pruning is unnecessary here because the ensemble is
+    reduced by energy after relaxation, so duplicates cost time but not
+    correctness.
+
+    Both failures produce zero-variance spread descriptors rather than an
+    error, so `describe` reports n_conf_ok and the spread terms explicitly.
+    """
     from ase import Atoms
 
     mol = Chem.MolFromSmiles(smiles)
@@ -71,12 +86,8 @@ def embed_conformers(smiles: str, n_conf: int = 5, seed: int = 0):
     mol = Chem.AddHs(mol)
 
     params = AllChem.ETKDGv3()
-    params.randomSeed = seed
+    params.randomSeed = seed if seed != 0 else 42
     params.useSmallRingTorsions = True
-    # No pruneRmsThresh: on this RDKit build it collapses an ETKDG ensemble to a
-    # single conformer even for flexible chains, which would silently zero the
-    # spread descriptors. Duplicates are harmless here because the ensemble is
-    # reduced by energy after relaxation.
     ids = AllChem.EmbedMultipleConfs(mol, numConfs=n_conf, params=params)
     if len(ids) == 0:
         return []
@@ -94,15 +105,21 @@ def embed_conformers(smiles: str, n_conf: int = 5, seed: int = 0):
 
 
 def relax(atoms, calc, fmax: float = 0.05, steps: int = 200):
-    """Local relaxation. Returns (energy_per_atom, initial_energy_per_atom, fmax)."""
+    """Local relaxation. Returns (relaxed_total_eV, initial_total_eV, fmax, atoms).
+
+    Energies are totals, not per-atom. Conformer energy differences and strain
+    are properties of the whole molecule; dividing them by atom count shrinks
+    them by an order of magnitude and mixes a size effect into a flexibility
+    measure. Only the absolute energy is size-normalised, downstream.
+    """
     from ase.optimize import LBFGS
 
     atoms = atoms.copy()
     atoms.calc = calc
-    e0 = atoms.get_potential_energy() / len(atoms)
+    e0 = atoms.get_potential_energy()
     opt = LBFGS(atoms, logfile=None)
     opt.run(fmax=fmax, steps=steps)
-    e1 = atoms.get_potential_energy() / len(atoms)
+    e1 = atoms.get_potential_energy()
     f = float(np.linalg.norm(atoms.get_forces(), axis=1).max())
     return e1, e0, f, atoms
 
@@ -124,7 +141,7 @@ def shape_descriptors(atoms) -> dict:
                 mace_pmi3=float(pmi[2]), mace_asphericity=asph)
 
 
-def describe(smiles: str, calc, n_conf: int = 5, seed: int = 0) -> dict:
+def describe(smiles: str, calc, n_conf: int = 5, seed: int = 42) -> dict:
     confs = embed_conformers(smiles, n_conf, seed)
     if not confs:
         return {k: np.nan for k in FEATURES}
@@ -143,11 +160,12 @@ def describe(smiles: str, calc, n_conf: int = 5, seed: int = 0) -> dict:
     if not energies:
         return {k: np.nan for k in FEATURES}
 
-    energies = np.array(energies)
+    energies = np.array(energies)          # total eV
     best = int(np.argmin(energies))
+    n_atoms = len(relaxed[best])
     row = dict(
-        mace_e_min=float(energies[best]),
-        mace_strain=float(initials[best] - energies[best]),
+        mace_e_min=float(energies[best]) / n_atoms,        # size-normalised
+        mace_strain=float(initials[best] - energies[best]),  # total eV
         mace_conf_spread=float(energies.max() - energies.min()),
         mace_conf_std=float(energies.std(ddof=1)) if len(energies) > 1 else 0.0,
         mace_fmax_final=float(forces[best]),
@@ -157,6 +175,37 @@ def describe(smiles: str, calc, n_conf: int = 5, seed: int = 0) -> dict:
     return row
 
 
+def debug_molecule(smiles: str, calc, n_conf: int = 5) -> None:
+    """Per-conformer energies and pairwise RMSD for one molecule.
+
+    Distinguishes 'the ensemble collapsed to one geometry' from 'distinct
+    geometries with indistinguishable energies'. A zero spread means very
+    different things in the two cases.
+    """
+    confs = embed_conformers(smiles, n_conf)
+    print(f"\n{smiles}: {len(confs)} conformers embedded, "
+          f"{len(confs[0]) if confs else 0} atoms")
+    if not confs:
+        return
+
+    rows = []
+    for i, at in enumerate(confs):
+        e1, e0, f, out = relax(at, calc)
+        rows.append((i, e0, e1, f, out))
+        print(f"  conf {i}: initial {e0:14.6f} eV   relaxed {e1:14.6f} eV   "
+              f"fmax {f:.4f}")
+
+    energies = np.array([r[2] for r in rows])
+    print(f"  spread {energies.max() - energies.min():.6f} eV   "
+          f"std {energies.std(ddof=1):.6f} eV")
+
+    print("  pairwise heavy-atom RMSD of relaxed geometries (A):")
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            pi, pj = rows[i][4].get_positions(), rows[j][4].get_positions()
+            print(f"    {i}-{j}: {float(np.sqrt(((pi - pj) ** 2).sum(1).mean())):.3f}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="esol", choices=list(DATASETS))
@@ -164,8 +213,17 @@ def main() -> None:
     ap.add_argument("--n-conformers", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None, help="first N molecules only")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--dtype", default="float64", choices=["float32", "float64"])
+    ap.add_argument("--debug", nargs="+", default=None,
+                    help="SMILES to diagnose per-conformer, then exit")
     ap.add_argument("--outdir", default="results")
     args = ap.parse_args()
+
+    if args.debug:
+        calc = get_calculator(args.model, args.device, args.dtype)
+        for smi in args.debug:
+            debug_molecule(smi, calc, args.n_conformers)
+        return
 
     spec = DATASETS[args.dataset]
     os.makedirs(args.outdir, exist_ok=True)
@@ -173,7 +231,7 @@ def main() -> None:
     if args.limit:
         df = df.head(args.limit)
 
-    calc = get_calculator(args.model, args.device)
+    calc = get_calculator(args.model, args.device, args.dtype)
 
     rows, t0 = [], time.time()
     for i, (smi, y) in enumerate(zip(df["smiles"], df["y"])):
