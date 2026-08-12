@@ -238,6 +238,9 @@ def main() -> None:
     ap.add_argument("--dtype", default="float64", choices=["float32", "float64"])
     ap.add_argument("--debug", nargs="+", default=None,
                     help="SMILES to diagnose per-conformer, then exit")
+    ap.add_argument("--checkpoint-every", type=int, default=50)
+    ap.add_argument("--restart", action="store_true",
+                    help="ignore an existing output file and recompute")
     ap.add_argument("--outdir", default="results")
     args = ap.parse_args()
 
@@ -253,18 +256,34 @@ def main() -> None:
     if args.limit:
         df = df.head(args.limit)
 
-    calc = get_calculator(args.model, args.device, args.dtype)
+    path = f"{args.outdir}/mace_join_{spec.name}.csv"
 
-    rows, t0 = [], time.time()
-    for i, (smi, y) in enumerate(zip(df["smiles"], df["y"])):
-        rows.append(dict(smiles=smi, y=y, **describe(smi, calc, args.n_conformers)))
-        if (i + 1) % 50 == 0:
-            rate = (time.time() - t0) / (i + 1)
-            left = rate * (len(df) - i - 1)
-            print(f"[mace] {i + 1}/{len(df)}  {rate:.2f}s/mol  ~{left / 60:.1f} min left")
+    # Resume: a full dataset takes long enough that losing a session to a
+    # timeout is a realistic failure, so partial results are written
+    # periodically and reused.
+    rows, done = [], set()
+    if os.path.exists(path) and not args.restart:
+        prev = pd.read_csv(path)
+        rows = prev.to_dict("records")
+        done = set(prev["smiles"])
+        print(f"[mace] resuming from {path}: {len(done)} molecules already done")
+
+    todo = [(s, y) for s, y in zip(df["smiles"], df["y"]) if s not in done]
+    if not todo:
+        print("[mace] nothing to do; delete the file or pass --restart to recompute")
+    else:
+        calc = get_calculator(args.model, args.device, args.dtype)
+        t0 = time.time()
+        for i, (smi, y) in enumerate(todo):
+            rows.append(dict(smiles=smi, y=y, **describe(smi, calc, args.n_conformers)))
+            if (i + 1) % args.checkpoint_every == 0:
+                pd.DataFrame(rows).to_csv(path, index=False)
+                rate = (time.time() - t0) / (i + 1)
+                left = rate * (len(todo) - i - 1)
+                print(f"[mace] {i + 1}/{len(todo)}  {rate:.2f}s/mol  "
+                      f"~{left / 60:.1f} min left  (checkpointed)")
 
     out = pd.DataFrame(rows)
-    path = f"{args.outdir}/mace_join_{spec.name}.csv"
     out.to_csv(path, index=False)
 
     ok = out[FEATURES].notna().all(axis=1).sum()
