@@ -41,7 +41,13 @@ def fit_predict(
     X_tr, y_tr, X_va, y_va, X_te, task: str = "regression", seed: int = 0
 ) -> np.ndarray:
     """Train LightGBM with early stopping on the validation set; return test preds."""
+    import warnings
+
     import lightgbm as lgb
+
+    # LightGBM warns when fit sees named columns and predict sees a bare array;
+    # both carry identical column order here, so the warning is noise.
+    warnings.filterwarnings("ignore", message=".*does not have valid feature names.*")
 
     params = dict(
         n_estimators=2000,

@@ -82,6 +82,18 @@ def build_feature_sets(qcols: list[str]) -> dict[str, list[str]]:
     return sets
 
 
+def quantum_only(X_fp, Q, y, tr, va, te, task, seed):
+    """Quantum descriptors with no fingerprints.
+
+    Without this condition a null result is ambiguous: descriptors that add
+    nothing on top of a fingerprint may still be individually informative and
+    merely redundant. Comparing the quantum block alone against the fingerprint
+    block alone separates 'uninformative' from 'already covered'.
+    """
+    return baseline.fit_predict(Q[tr], y[tr], Q[va], y[va], Q[te],
+                                task=task, seed=seed)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="lipo", choices=list(DATASETS))
@@ -141,6 +153,13 @@ def main() -> None:
                              seed=seed, **m))
             print(f"    {name:12s} (+{len(cols):2d} cols)  {key}={m[key]:.4f}")
 
+        p = quantum_only(X_fp, Q, y, tr, va, te, spec.task, seed)
+        m = metrics(y[te], p, spec.task)
+        rows.append(dict(dataset=spec.name, features="qm_only",
+                         n_extra=len(qcols), seed=seed, **m))
+        print(f"    {'qm_only':12s} ({len(qcols):3d} cols, no fingerprints)  "
+              f"{key}={m[key]:.4f}")
+
     runs = pd.DataFrame(rows)
     runs.to_csv(f"{args.outdir}/desc_{spec.name}.csv", index=False)
 
@@ -150,9 +169,11 @@ def main() -> None:
     delta = (piv["none"].values[:, None] - piv.values) * sign   # + = added features help
     delta = pd.DataFrame(delta, index=piv.index, columns=piv.columns).drop(columns="none")
 
+    n_cols = {name: len(cols) for name, cols in sets.items()}
+    n_cols["qm_only"] = len(qcols)
     tab = pd.DataFrame({
         "features": delta.columns,
-        "n_extra": [len(sets[c]) for c in delta.columns],
+        "n_extra": [n_cols.get(c, 0) for c in delta.columns],
         "delta_mean": delta.mean().round(4).values,
         "delta_sd": delta.std(ddof=1).round(4).values,
         "seeds_improved": [f"{int((delta[c] > 0).sum())}/{len(delta)}" for c in delta.columns],
