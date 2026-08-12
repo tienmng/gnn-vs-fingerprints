@@ -21,7 +21,7 @@ from google.colab import files
 files.download("results.zip")
 ```
 
-Unzip `results/` into your local clone before committing.
+Unzip `results/` into the local clone before committing.
 
 ## Local
 
@@ -84,6 +84,17 @@ python -m src.qmugs_overlap --datasets esol lipo bace bbbp --qmugs path/to/summa
 Without `--qmugs` it caches `results/inchikeys_<ds>.csv` only. With it, also writes
 `results/qmugs_join_<ds>.csv` (descriptors merged onto our molecules) and
 `results/qmugs_overlap.csv`.
+
+## MACE-OFF descriptors
+
+```bash
+pip install mace-torch ase
+python -m src.mace_desc --dataset esol --n-conformers 5
+python -m src.descriptor_exp --dataset esol --join results/mace_join_esol.csv
+```
+
+`--limit N` restricts to the first N molecules for timing. Writes
+`results/mace_join_<ds>.csv`.
 
 ## Commit
 

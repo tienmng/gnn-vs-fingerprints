@@ -39,6 +39,8 @@ CLASSICAL = {
     "mw", "atoms", "heavy_atoms", "heteroatoms", "rotatable_bonds", "stereocenters",
     "rings", "hbond_acceptors", "hbond_donors", "significant_negative_wavenumbers",
     "nonunique_smiles", "y",
+    # convergence diagnostics, not descriptors
+    "mace_fmax_final", "mace_n_conf_ok",
 }
 
 FAMILIES: dict[str, tuple[str, ...]] = {
@@ -57,12 +59,20 @@ FAMILIES: dict[str, tuple[str, ...]] = {
                "TWO_ELECTRON_ENERGY"),
     # moments of inertia: shape and compactness
     "rotational": ("ROT_CONSTANT_",),
+    # foundation-potential energetics (src/mace_desc.py)
+    "mace_energy": ("mace_e_min", "mace_strain"),
+    # conformer ensemble spread: flexibility, entropy of fusion proxy
+    "mace_flex": ("mace_conf_spread", "mace_conf_std"),
+    # 3D shape from the relaxed geometry
+    "mace_shape": ("mace_rg", "mace_pmi", "mace_asphericity"),
 }
+
+PREFIXES = ("GFN2_", "DFT_", "mace_")
 
 
 def quantum_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.select_dtypes("number").columns
-            if c not in CLASSICAL and (c.startswith("GFN2_") or c.startswith("DFT_"))]
+            if c not in CLASSICAL and c.startswith(PREFIXES)]
 
 
 def family_of(col: str) -> str:

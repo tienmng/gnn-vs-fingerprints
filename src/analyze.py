@@ -171,7 +171,7 @@ def error_vs_similarity(preds: pd.DataFrame, all_smiles: list[str], ds: str, out
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="esol")
-    ap.add_argument("--csv", default=None, help="same local CSV you passed to run_all")
+    ap.add_argument("--csv", default=None, help="same local CSV passed to run_all")
     ap.add_argument("--outdir", default="results")
     args = ap.parse_args()
     ds = args.dataset

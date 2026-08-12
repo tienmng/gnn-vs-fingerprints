@@ -35,7 +35,8 @@ Both models, four datasets, random and Bemis–Murcko scaffold splits, learning 
   favoured the GNN. See "Methods note" below.
 - **Quantum descriptors add nothing.** Precomputed GFN2-xTB and DFT properties from QMugs
   do not improve on fingerprints for lipophilicity, and two descriptor families measurably
-  degrade it. Fitted alone the quantum block is 56% worse than fingerprints alone.
+  degrade it. Fitted alone the quantum block closes only 14% of the gap between a constant
+  prediction and the fingerprint model.
 
 ---
 
@@ -95,7 +96,7 @@ split. Positive `Δ` means the GNN is better.
 
 ![ESOL applicability domain](results/error_vs_sim_esol.png)
 
-This is the most consistent result in the project. Wherever a test set contains molecules
+This effect replicates on every dataset that permits the comparison. Wherever a test set contains molecules
 below 0.3 similarity to anything in training, the GNN predicts them better — on ESOL,
 lipophilicity and BBBP alike, by a similar margin each time. A Morgan fingerprint is a
 similarity-matching representation: it performs well when the test molecule resembles a
@@ -145,7 +146,7 @@ Paired change in RMSE against fingerprints alone (0.681 ± 0.086); positive is b
 | multipole (dipole, quadrupole) | 14 | **−0.015** | **0.003** | **0/3** |
 | rotational (moments of inertia) | 6 | **−0.015** | 0.012 | **0/3** |
 | quantum only, no fingerprints | 53 | **−0.381** | 0.064 | **0/3** |
-| constant prediction | 0 | _fill in_ | | 0/3 |
+| constant prediction (training mean) | 0 | **−0.447** | 0.080 | **0/3** |
 
 **Nothing reliably improves on fingerprints.** The largest positive effect, the frontier
 orbital block at +0.013, has a standard deviation larger than the effect itself.
@@ -156,10 +157,16 @@ in the table. With `colsample_bytree=0.5`, fourteen dense weakly-informative col
 compete with informative bits at every split of a 2048-bit sparse fingerprint. Feature
 dilution, measured rather than asserted.
 
-**The quantum block is weak, not merely redundant.** Fitted alone it scores 1.076 against
-0.681 for fingerprints alone — 56% worse, on every seed. Had it been redundant it would
-have scored comparably and simply added nothing; instead it carries substantially less
-information about this endpoint than substructure counts do.
+**The quantum block is weak, not merely redundant.** Fitted alone it scores 1.062 against
+0.681 for fingerprints alone, on every seed. Had it been redundant it would have scored
+comparably and simply added nothing; instead it carries far less information about this
+endpoint than substructure counts do.
+
+The constant-prediction floor sets the scale. Predicting the training mean gives 1.127, so
+the 53 quantum descriptors close only **14% of the gap** between that floor and the
+fingerprint model (0.065 of 0.446 RMSE), and inconsistently — 16%, 23% and 3% across the
+three seeds. In variance terms they account for roughly 11% of the test set against about
+64% for fingerprints. This is not a weak-but-useful signal; it is close to no signal.
 
 ### What this does and does not show
 
@@ -211,7 +218,7 @@ inputs. Equivalent tables for lipophilicity are in `results/worst20_lipo.csv`.
 ## Methods note: pairing
 
 Within a dataset both models see the same split, the same seed and the same training subset,
-so differences are taken per pair before averaging. This matters more than it sounds.
+so differences are taken per pair before averaging.
 
 The first version of `src/summarize.py` declared a crossover wherever the mean difference
 changed sign. That reported a crossover on ESOL at n=500, where the paired mean is +0.003
@@ -275,7 +282,11 @@ src/learning_curve.py  test error vs. training-set size, scaffold split
 src/summarize.py       paired cross-dataset comparison
 src/qmugs_overlap.py   InChIKey match against QMugs, with a cheap prescreen
 src/descriptor_exp.py  within-subset quantum descriptor ablation
+src/mace_desc.py       geometry and conformer-energy descriptors from MACE-OFF
 ```
+
+MACE-OFF weights are distributed under the Academic Software License, which permits
+academic but not commercial use. Everything else here is MIT.
 
 ## Design notes
 

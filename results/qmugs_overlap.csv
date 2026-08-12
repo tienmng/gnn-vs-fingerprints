@@ -1,0 +1,2 @@
+dataset,n_molecules,exact_match,exact_pct,skeleton_match,skeleton_pct
+lipo,4200,2708,64.5,3225,76.8
