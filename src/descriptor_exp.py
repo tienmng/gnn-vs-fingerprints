@@ -160,6 +160,16 @@ def main() -> None:
         print(f"    {'qm_only':12s} ({len(qcols):3d} cols, no fingerprints)  "
               f"{key}={m[key]:.4f}")
 
+        # Floor: predict the training mean (or base rate). Without it, the
+        # quantum-only score has no reference and "weak" cannot be quantified.
+        const = (np.full(len(te), y[tr].mean()) if spec.task == "regression"
+                 else np.full(len(te), float(np.mean(y[tr]))))
+        m = metrics(y[te], const, spec.task) if spec.task == "regression" else \
+            {"roc_auc": 0.5, "pr_auc": float(np.mean(y[te]))}
+        rows.append(dict(dataset=spec.name, features="mean_only",
+                         n_extra=0, seed=seed, **m))
+        print(f"    {'mean_only':12s} (constant prediction)  {key}={m[key]:.4f}")
+
     runs = pd.DataFrame(rows)
     runs.to_csv(f"{args.outdir}/desc_{spec.name}.csv", index=False)
 

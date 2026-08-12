@@ -33,6 +33,9 @@ Both models, four datasets, random and Bemis–Murcko scaffold splits, learning 
 - **Paired comparison is necessary.** A first version of `summarize.py` called a crossover
   wherever the mean difference changed sign, and reported one on ESOL where only 1 seed in 3
   favoured the GNN. See "Methods note" below.
+- **Quantum descriptors add nothing.** Precomputed GFN2-xTB and DFT properties from QMugs
+  do not improve on fingerprints for lipophilicity, and two descriptor families measurably
+  degrade it. Fitted alone the quantum block is 56% worse than fingerprints alone.
 
 ---
 
@@ -115,6 +118,61 @@ the clearest aggregate win.
 BBBP is anomalous: the baseline's error *rises* with similarity to training (0.327 → 0.447),
 the opposite of the expected direction. Consistent with the label-noise caveat above, and
 not otherwise explained here.
+
+## Do quantum descriptors help? (Lipophilicity)
+
+Precomputed GFN2-xTB and DFT (ωB97X-D/def2-SVP) properties were taken from
+[QMugs](https://doi.org/10.3929/ethz-b-000482129) by InChIKey skeleton match. 3,225 of
+4,200 lipophilicity molecules matched (76.8%); ESOL matched only 24.2%, BBBP 35.7%.
+
+Coverage is not missing at random — QMugs is ChEMBL-derived and omits the solvents and
+agrochemicals — so every model below is fitted and scored on the same 3,225 covered
+molecules, with the scaffold split recomputed on that subset. QMugs' classical columns
+(MW, ring count, H-bond counts) are excluded, since the fingerprint baseline already
+carries RDKit equivalents.
+
+![quantum descriptor ablation](results/fig_desc_lipo.png)
+
+Paired change in RMSE against fingerprints alone (0.681 ± 0.086); positive is better.
+
+| features | n cols | ΔRMSE | s.d. | seeds improved |
+|---|---|---|---|---|
+| electronic (HOMO, LUMO, gap, Fermi) | 7 | +0.013 | 0.015 | 2/3 |
+| all quantum | 53 | −0.001 | 0.021 | 1/3 |
+| thermo (enthalpy, entropy, heat capacity) | 14 | −0.004 | 0.005 | 1/3 |
+| response (polarizability, dispersion) | 2 | −0.007 | 0.011 | 1/3 |
+| energy (extensive totals) | 10 | −0.007 | 0.015 | 1/3 |
+| multipole (dipole, quadrupole) | 14 | **−0.015** | **0.003** | **0/3** |
+| rotational (moments of inertia) | 6 | **−0.015** | 0.012 | **0/3** |
+| quantum only, no fingerprints | 53 | **−0.381** | 0.064 | **0/3** |
+| constant prediction | 0 | _fill in_ | | 0/3 |
+
+**Nothing reliably improves on fingerprints.** The largest positive effect, the frontier
+orbital block at +0.013, has a standard deviation larger than the effect itself.
+
+**Two families reliably degrade performance.** Multipole and rotational descriptors lose
+on 3/3 seeds, and the multipole standard deviation of 0.003 makes it the tightest number
+in the table. With `colsample_bytree=0.5`, fourteen dense weakly-informative columns
+compete with informative bits at every split of a 2048-bit sparse fingerprint. Feature
+dilution, measured rather than asserted.
+
+**The quantum block is weak, not merely redundant.** Fitted alone it scores 1.076 against
+0.681 for fingerprints alone — 56% worse, on every seed. Had it been redundant it would
+have scored comparably and simply added nothing; instead it carries substantially less
+information about this endpoint than substructure counts do.
+
+### What this does and does not show
+
+These descriptors are **gas-phase, neutral-form and single-conformer**. The labels are
+experimental logD at pH 7.4, governed by ionization state and by solvation free energy —
+neither of which appears anywhere in the 53 columns. The finding is therefore that
+gas-phase electronic structure adds nothing over fingerprints for a solution-phase,
+pH-dependent property. It is not evidence that quantum chemistry is uninformative about
+lipophilicity: the quantity that would matter, ΔG_solv, is absent from QMugs and would
+have to be computed with an implicit-solvent method such as GFN2-xTB/ALPB.
+
+Seed 1 scored 0.779 against 0.624 and 0.639 for the other two — the same scaffold-split
+seed instability seen throughout this repo, reappearing in a different experiment.
 
 ## Error analysis (ESOL)
 
@@ -215,6 +273,8 @@ src/run_all.py         {model} x {split} x {seed} grid -> results/*.csv
 src/analyze.py         figures, worst-prediction table, applicability domain
 src/learning_curve.py  test error vs. training-set size, scaffold split
 src/summarize.py       paired cross-dataset comparison
+src/qmugs_overlap.py   InChIKey match against QMugs, with a cheap prescreen
+src/descriptor_exp.py  within-subset quantum descriptor ablation
 ```
 
 ## Design notes
