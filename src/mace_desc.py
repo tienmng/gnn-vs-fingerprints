@@ -199,11 +199,33 @@ def debug_molecule(smiles: str, calc, n_conf: int = 5) -> None:
     print(f"  spread {energies.max() - energies.min():.6f} eV   "
           f"std {energies.std(ddof=1):.6f} eV")
 
-    print("  pairwise heavy-atom RMSD of relaxed geometries (A):")
+    n_unique = len(np.unique(np.round(energies, 6)))
+    print(f"  {n_unique} distinct relaxed energies out of {len(energies)} conformers")
+
+    print("  pairwise heavy-atom RMSD after optimal superposition (A):")
     for i in range(len(rows)):
         for j in range(i + 1, len(rows)):
-            pi, pj = rows[i][4].get_positions(), rows[j][4].get_positions()
-            print(f"    {i}-{j}: {float(np.sqrt(((pi - pj) ** 2).sum(1).mean())):.3f}")
+            print(f"    {i}-{j}: {heavy_atom_rmsd(rows[i][4], rows[j][4]):.3f}")
+
+
+def heavy_atom_rmsd(a, b) -> float:
+    """RMSD over heavy atoms after Kabsch superposition.
+
+    Without alignment, RMSD counts rigid-body rotation as conformational
+    difference: methane, which has a single conformation, otherwise reports
+    up to 1.1 A between identical structures.
+    """
+    keep = a.get_atomic_numbers() != 1
+    P = a.get_positions()[keep]
+    Q = b.get_positions()[keep]
+    if len(P) < 2:
+        return 0.0
+    P = P - P.mean(0)
+    Q = Q - Q.mean(0)
+    V, _, W = np.linalg.svd(P.T @ Q)
+    d = np.sign(np.linalg.det(V @ W))
+    U = V @ np.diag([1.0, 1.0, d]) @ W
+    return float(np.sqrt((((P @ U) - Q) ** 2).sum(1).mean()))
 
 
 def main() -> None:
